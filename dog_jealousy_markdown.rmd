@@ -18,11 +18,11 @@ library(lme4)
 
 library(ggthemes)
 library(psych)
-library(summarytools)
 library(cowplot)
 library(glmmTMB)
-library(eeptools)
+#library(eeptools)
 library(car)
+
 
 #install.packages("")
 
@@ -30,6 +30,7 @@ library(car)
 
 library(exactRankTests)
 library(tidyverse)
+library(summarytools)
 better.wilcox2=function(var1, var2){
   test.data=data.frame(var1, var2)
   test.data=subset( test.data, var1 != var2)
@@ -64,9 +65,9 @@ orig.data$age <- floor(age_calc(orig.data$birthdate, orig.data$test_date, units 
 view(dfSummary(orig.data))
 
 blocking.data<-orig.data %>%
-  mutate(blocking = ifelse(Value=="Blocking",1,0), non_off_manipulation = ifelse(Value=="Non-offensive manipulation",1,0), dom_beh = ifelse(Value=="Dominant behaviours",1,0)) %>%
+  mutate(blocking = ifelse(Value=="Blocking",1,0), non_off_manipulation = ifelse(Value=="Non-offensive manipulation",1,0), dom_beh = ifelse(Value=="Dominant behaviours",1,0), friendly = ifelse(Value=="Interaction with fake dog",1,0)) %>%
   group_by(subject, breed, age, sex, condition, side_fakedog, side_chair) %>%
-  summarise(blocking.sum=sum(blocking), non_off_manipulation.sum=sum(non_off_manipulation), dom_beh.sum=sum(dom_beh))%>%
+  summarise(blocking.sum=sum(blocking), non_off_manipulation.sum=sum(non_off_manipulation), dom_beh.sum=sum(dom_beh), friendly.sum=sum(friendly))%>%
   mutate(blocking_presence = ifelse(blocking.sum>0,1,0), non_off_manipulation_presence = ifelse(non_off_manipulation.sum>0,1,0), dom_beh_presence = ifelse(dom_beh.sum>0,1,0)) %>%
   ungroup()
 
@@ -102,6 +103,16 @@ summary(blocking.glm01)
 
 drop1(blocking.glm01, test="Chisq")#likelihood ratio test
 ```
+
+```{r}
+blocking.glm01 <- glm(blocking.sum ~ human + treatment + z.age + sex, 
+             data = model.data, family = poisson)
+
+summary(blocking.glm01)
+overdisp.test(blocking.glm01)
+drop1(blocking.glm01, test="Chisq")#likelihood ratio test
+```
+
 ```{r}
 blocking.glm02 <- glm(blocking_presence ~ human + treatment + z.age + sex, 
              data = model.data, family = binomial)
