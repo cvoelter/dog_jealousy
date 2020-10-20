@@ -1,5 +1,5 @@
 ---
-title: "Dog Jealousy- analysis Script" - Blocking behaviours
+title: "Dog Jealousy- analysis Script"
 author: "CV"
 date: "September 22, 2020"
 output:
@@ -15,7 +15,7 @@ rm(list=ls())
 
 
 library(lme4)
-
+library(MASS) # negative binomial tests
 library(ggthemes)
 library(psych)
 library(cowplot)
@@ -67,29 +67,37 @@ view(dfSummary(orig.data))
 
 Aggregate data
 ```{r loading data, include = FALSE}
-blocking.data<-orig.data %>%
+agg.data<-orig.data %>%
   mutate(blocking = ifelse(Value=="Blocking",1,0), non_off_manipulation = ifelse(Value=="Non-offensive manipulation",1,0), dom_beh = ifelse(Value=="Dominant behaviours",1,0), interaction_dog = ifelse(Value=="Interaction with fake dog",1,0), first_dog_approach = ifelse(Behaviour=="First approach" & Value=="Approach fake dog",1,0), sniffing_dog = ifelse(Value=="Sniffing fake dog" | Value=="Sniffing anal region of fake dog",1,0)) %>%
   group_by(subject, breed, age, sex, condition, side_fakedog, side_chair) %>%
   summarise(blocking.sum=sum(blocking), non.off.manipulation.sum=sum(non_off_manipulation), dom.beh.sum=sum(dom_beh), interaction.dog.sum=sum(interaction_dog), dog.approach.sum=sum(first_dog_approach), sniffing.dog.sum=sum(sniffing_dog))%>%
   mutate(blocking.presence = ifelse(blocking.sum>0,1,0), non.off.manipulation.presence = ifelse(non.off.manipulation.sum>0,1,0), dom.beh.presence = ifelse(dom.beh.sum>0,1,0), interaction.dog.presence = ifelse(interaction.dog.sum>0,1,0), sniffing.dog.presence = ifelse(sniffing.dog.sum>0,1,0)) %>%
   ungroup()
 
-blocking.data$human <- as.factor(substring(blocking.data$condition, 1,1))
-blocking.data$treatment <- as.factor(substring(blocking.data$condition, 2,2))
+agg.data$human <- as.factor(substring(agg.data$condition, 1,1))
+agg.data$treatment <- as.factor(substring(agg.data$condition, 2,2))
 
-view(dfSummary(blocking.data))
+view(dfSummary(agg.data))
 
 
-table(blocking.data$condition, blocking.data$blocking.presence)
-table(blocking.data$condition, blocking.data$non.off.manipulation.presence)
-table(blocking.data$condition, blocking.data$dom.beh.presence)
+
+hist(agg.data$blocking.sum)
+hist(agg.data$non.off.manipulation.sum)
+hist(agg.data$dom.beh.sum)
+hist(agg.data$interaction.dog.sum)
+hist(agg.data$dog.approach.sum)
+hist(agg.data$sniffing.dog.sum)
+
+table(agg.data$condition, agg.data$blocking.presence)
+table(agg.data$condition, agg.data$non.off.manipulation.presence)
+table(agg.data$condition, agg.data$dom.beh.presence)
 ```
 
 ``` {r mixed modeling, error=TRUE}
 
 # centering variables for modeling
 
-model.data <- blocking.data %>% 
+model.data <- agg.data %>% 
   mutate(z.age = as.numeric(scale(age, scale = T, center = T)),
          sex.c = as.numeric(scale(as.numeric(sex), scale = F, center = T)))
 
@@ -97,6 +105,8 @@ as.data.frame(model.data)
 #view(dfSummary(model.data))
 ```
 
+
+### Blocking variable
 
 ```{r}
 blocking.glm01 <- glm(blocking.presence ~ human * treatment + z.age + sex, 
@@ -129,19 +139,18 @@ vif(col.blocking.glm)
 
 #### Model stability
 ```{r}
-cbind(coef(col.blocking.glm02),
-coef(col.blocking.glm02)+t(apply(X=dfbeta(col.blocking.glm02), MARGIN=2, FUN=range)))
+cbind(coef(blocking.glm02), coef(blocking.glm02)+t(apply(X=dfbeta(blocking.glm02), MARGIN=2, FUN=range)))
 ```
 
 #### Confidence intervals
 ```{r}
-cbind(orig=coefficients(col.blocking.glm02), confint(object=col.blocking.glm02))
+cbind(orig=coefficients(blocking.glm02), confint(object=blocking.glm02))
 ```
 
 ### CI for the plot
 
 ```{r}
-blocking.glm02.ci <- glm(blocking_presence ~ human + treatment + z.age + sex.c, 
+blocking.glm02.ci <- glm(blocking.presence ~ human + treatment + z.age + sex.c, 
              data = model.data, family = binomial)
 ##adding fitted values
 fv=rep(NA, times=4)
@@ -154,7 +163,7 @@ fv=exp(fv)/(1+exp(fv))
 
 to.plot <- model.data %>%
   group_by(human, treatment)%>%
-  summarise(mean.blocking=mean(blocking_presence))%>%
+  summarise(mean.blocking=mean(blocking.presence))%>%
   ungroup()
 
 to.plot$z.age=0
@@ -182,10 +191,10 @@ to.plot=(cbind(to.plot, fv, ci.plot))
 
 ```{r}
 
-blocking.plot.data <- blocking.data %>%
+blocking.plot.data <- agg.data %>%
   mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
   group_by(condition, human, treatment)%>%
-  summarise(mean.blocking=mean(blocking_presence), sd.blocking=sd(blocking_presence),  median.blocking=median(blocking_presence),  se.blocking=sd(blocking_presence)/sqrt(length(blocking_presence)))
+  summarise(mean.blocking=mean(blocking.presence), sd.blocking=sd(blocking.presence),  median.blocking=median(blocking.presence),  se.blocking=sd(blocking.presence)/sqrt(length(blocking.presence)))
 
 blocking.plot.data <- cbind(as.data.frame(blocking.plot.data), fv, ci.plot)
 
@@ -203,103 +212,64 @@ ggsave(plot.blocking, filename = "graphs/blocking_plot.png", width = 10, height 
 ```
 
 
----------------------------------------------------------------------------------------------------------------------------------------
-title: "Dog Jealousy- analysis Script" - Non-offensive manipulation behaviours
-author: "SK"
-date: "Oktober 2, 2020"
-output:
-  pdf_document: default
-  html_document: default
----
+### Analysis of all blocking events (blocking.sum)
 
-```{r setup, include=FALSE}
+```{r}
+hist(model.data$blocking.sum, breaks = c(0,1,2,3,4,5,6, 10))
+```
 
-knitr::opts_chunk$set(echo = TRUE)
+```{r}
+blocking.glm03 <- glm(blocking.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = poisson)
 
-rm(list=ls())
+overdisp.test(blocking.glm03)
+```
+--> overdispersed. Try negative binomial model instead of poisson model
+
+```{r}
 
 
-library(lme4)
+blocking.glm04=glm.nb(blocking.sum ~ human * treatment + z.age + sex, data = model.data)
 
-library(ggthemes)
-library(psych)
-library(summarytools)
-library(cowplot)
-library(glmmTMB)
-library(eeptools)
-library(car)
 
-#install.packages("")
+overdisp.test(blocking.glm04)
+--> not overdispersed
 
-#load(file ="mm1_mult_poss.RData")
+summary(blocking.glm04)
 
-library(exactRankTests)
-library(tidyverse)
-better.wilcox2=function(var1, var2){
-  test.data=data.frame(var1, var2)
-  test.data=subset( test.data, var1 != var2)
-  N=nrow(test.data)
-  w.res=wilcox.exact (test.data$var1, test.data$var2, paired=T, exact=T, alternative = c("two.sided"))
-  wT=w.res$statistic
-  wT=max(c(wT, N*(N+1)/2- wT))
-return(data.frame(T.plus=wT, N=N, P=w.res$p.value) )
-}
-
-source("./functions/diagnostic_fcns.r")
-source("./functions/glmm_stability.r")
-source("./functions/boot_glmm.r")
-source("./functions/drop1_para.r")
+drop1(blocking.glm04, test="Chisq")#likelihood ratio test
 
 ```
+
+
+```{r}
+blocking.glm05=glm.nb(blocking.sum ~ human + treatment + z.age + sex, data = model.data)
+
+
+overdisp.test(blocking.glm05)
+--> not overdispersed
+
+summary(blocking.glm05)
+
+drop1(blocking.glm05, test="Chisq")#likelihood ratio test
+
+```
+--> same result as the binomial model with the blocking presence / absent DV
+
+
+### Non-offensive manipulation behaviours
+
+
 
 Notes:
 Maylo is doubled. Dusty has no values in reaction phase.--> already fixed
 new: there were mistakes in the birth dates of several dogs in data file --> fixed (csv file:".._new")
 
-```{r loading data, include = FALSE}
-orig.data <- read.csv(file="data/201002_behavioural test_coding_data_all_dogs_new.csv")
 
-orig.data$test_date <- paste(orig.data$year, orig.data$month, orig.data$day,sep="-")
-
-orig.data$test_date <- as.Date(orig.data$test_date)
-orig.data$birthdate <- as.Date(orig.data$birthdate, "%d.%m.%Y")
-
-orig.data$age <- floor(age_calc(orig.data$birthdate, orig.data$test_date, units = "months"))
-
-view(dfSummary(orig.data))
-
-non_off_manipulation.data<-orig.data %>%
-  mutate(non_off_manipulation = ifelse(Value=="Non-offensive manipulation",1,0), dom_beh = ifelse(Value=="Dominant behaviours",1,0)) %>%
-  group_by(subject, breed, age, sex, condition, side_fakedog, side_chair) %>%
-  summarise(non_off_manipulation.sum=sum(non_off_manipulation), dom_beh.sum=sum(dom_beh))%>%
-  mutate(non_off_manipulation_presence = ifelse(non_off_manipulation.sum>0,1,0), dom_beh_presence = ifelse(dom_beh.sum>0,1,0)) %>%
-  ungroup()
-
-non_off_manipulation.data$human <- as.factor(substring(non_off_manipulation.data$condition, 1,1))
-non_off_manipulation.data$treatment <- as.factor(substring(non_off_manipulation.data$condition, 2,2))
-
-view(dfSummary(non_off_manipulation.data))
-
-
-table(blocking.data$condition, blocking.data$non_off_manipulation_presence)
-table(blocking.data$condition, blocking.data$dom_beh_presence)
-```
-
-``` {r mixed modeling, error=TRUE}
-
-# centering variables for modeling
-
-model.data <- non_off_manipulation.data %>% 
-  mutate(z.age = as.numeric(scale(age, scale = T, center = T)),
-         sex.c = as.numeric(scale(as.numeric(sex), scale = F, center = T)))
-
-as.data.frame(model.data)
-#view(dfSummary(model.data))
-```
 
 
 ```{r}
-non_off_manipulation.glm01 <- glm(non_off_manipulation_presence ~ human * treatment + z.age + sex, 
+non_off_manipulation.glm01 <- glm(non.off.manipulation.presence ~ human * treatment + z.age + sex, 
              data = model.data, family = binomial)
 
 summary(non_off_manipulation.glm01)
@@ -307,7 +277,7 @@ summary(non_off_manipulation.glm01)
 drop1(non_off_manipulation.glm01, test="Chisq")#likelihood ratio test
 ```
 ```{r}
-non_off_manipulation.glm02 <- glm(non_off_manipulation_presence ~ human + treatment + z.age + sex, 
+non_off_manipulation.glm02 <- glm(non.off.manipulation.presence ~ human + treatment + z.age + sex, 
              data = model.data, family = binomial)
 
 summary(non_off_manipulation.glm02)
@@ -319,26 +289,25 @@ drop1(non_off_manipulation.glm02, test="Chisq")#likelihood ratio test
 
 ```{R echo=FALSE, error=FALSE, warning=FALSE}
 
-col.non_off_manipulation.glm <- lm(non_off_manipulation_presence ~ human + treatment + z.age + sex, data = model.data)
+col.non_off_manipulation.glm <- lm(non.off.manipulation.presence ~ human + treatment + z.age + sex, data = model.data)
 vif(col.non_off_manipulation.glm)
 #no problem
 ```
 
 #### Model stability
 ```{r}
-cbind(coef(col.non_off_manipulation.glm02),
-coef(col.non_off_manipulation.glm02)+t(apply(X=dfbeta(col.blocking.glm02), MARGIN=2, FUN=range)))
+cbind(coef(non_off_manipulation.glm02), coef(non_off_manipulation.glm02)+t(apply(X=dfbeta(non_off_manipulation.glm02), MARGIN=2, FUN=range)))
 ```
 
 #### Confidence intervals
 ```{r}
-cbind(orig=coefficients(col.non_off_manipulation.glm02), confint(object=col.non_off_manipulation.glm02))
+cbind(orig=coefficients(non_off_manipulation.glm02), confint(object=non_off_manipulation.glm02))
 ```
 
 ### CI for the plot
 
 ```{r}
-non_off_manipulation.glm02.ci <- glm(non_off_manipulation_presence ~ human + treatment + z.age + sex.c, 
+non_off_manipulation.glm02.ci <- glm(non.off.manipulation.presence ~ human + treatment + z.age + sex.c, 
              data = model.data, family = binomial)
 ##adding fitted values
 fv=rep(NA, times=4)
@@ -351,7 +320,7 @@ fv=exp(fv)/(1+exp(fv))
 
 to.plot <- model.data %>%
   group_by(human, treatment)%>%
-  summarise(mean.non_off_manipulation=mean(non_off_manipulation_presence))%>%
+  summarise(mean.non_off_manipulation=mean(non.off.manipulation.presence))%>%
   ungroup()
 
 to.plot$z.age=0
@@ -379,10 +348,10 @@ to.plot=(cbind(to.plot, fv, ci.plot))
 
 ```{r}
 
-non_off_manipulation.plot.data <- non_off_manipulation.data %>%
+non_off_manipulation.plot.data <- model.data %>%
   mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
   group_by(condition, human, treatment)%>%
-  summarise(mean.non_off_manipulation=mean(non_off_manipulation_presence), sd.non_off_manipulation=sd(non_off_manipulation_presence),  median.non_off_manipulation=median(non_off_manipulation_presence),  se.non_off_manipulation=sd(non_off_manipulation_presence)/sqrt(length(non_off_manipulation_presence)))
+  summarise(mean.non_off_manipulation=mean(non.off.manipulation.presence), sd.non_off_manipulation=sd(non.off.manipulation.presence),  median.non_off_manipulation=median(non.off.manipulation.presence),  se.non_off_manipulation=sd(non.off.manipulation.presence)/sqrt(length(non.off.manipulation.presence)))
 
 non_off_manipulation.plot.data <- cbind(as.data.frame(non_off_manipulation.plot.data), fv, ci.plot)
 
@@ -398,110 +367,23 @@ plot.non_off_manipulation <- ggplot(
 
 ggsave(plot.non_off_manipulation, filename = "graphs/non_off_manipulation_plot.png", width = 10, height = 6, scale = 0.6) # not running yet due to new csv file
 ```
--------------------------------------------------------------------------------------------------------------------------------------------------
-title: "Dog Jealousy- analysis Script" - Dominant behaviours
-author: "SK"
-date: "Oktober 2, 2020"
-output:
-  pdf_document: default
-  html_document: default
----
-
-```{r setup, include=FALSE}
-
-knitr::opts_chunk$set(echo = TRUE)
-
-rm(list=ls())
 
 
-library(lme4)
+###Dominant behaviours
 
-library(ggthemes)
-library(psych)
-library(summarytools)
-library(cowplot)
-library(glmmTMB)
-library(eeptools)
-library(car)
-
-#install.packages("")
-
-#load(file ="mm1_mult_poss.RData")
-
-library(exactRankTests)
-library(tidyverse)
-better.wilcox2=function(var1, var2){
-  test.data=data.frame(var1, var2)
-  test.data=subset( test.data, var1 != var2)
-  N=nrow(test.data)
-  w.res=wilcox.exact (test.data$var1, test.data$var2, paired=T, exact=T, alternative = c("two.sided"))
-  wT=w.res$statistic
-  wT=max(c(wT, N*(N+1)/2- wT))
-return(data.frame(T.plus=wT, N=N, P=w.res$p.value) )
-}
-
-source("./functions/diagnostic_fcns.r")
-source("./functions/glmm_stability.r")
-source("./functions/boot_glmm.r")
-source("./functions/drop1_para.r")
-
-```
-
-Notes:
-Maylo is doubled. Dusty has no values in reaction phase.--> already fixed
-birth dates --> fixed
-
-```{r loading data, include = FALSE}
-orig.data <- read.csv(file="data/201002_behavioural test_coding_data_all_dogs_new.csv")
-
-orig.data$test_date <- paste(orig.data$year, orig.data$month, orig.data$day,sep="-")
-
-orig.data$test_date <- as.Date(orig.data$test_date)
-orig.data$birthdate <- as.Date(orig.data$birthdate, "%d.%m.%Y")
-
-orig.data$age <- floor(age_calc(orig.data$birthdate, orig.data$test_date, units = "months"))
-
-view(dfSummary(orig.data))
-
-dom_beh.data<-orig.data %>%
-  mutate(dom_beh = ifelse(Value=="Dominant behaviours",1,0)) %>%
-  group_by(subject, breed, age, sex, condition, side_fakedog, side_chair) %>%
-  summarise(dom_beh.sum=sum(dom_beh))%>%
-  mutate(dom_beh_presence = ifelse(dom_beh.sum>0,1,0)) %>%
-  ungroup()
-
-dom_beh.data$human <- as.factor(substring(dom_beh.data$condition, 1,1))
-dom_beh.data$treatment <- as.factor(substring(dom_beh.data$condition, 2,2))
-
-view(dfSummary(dom_beh.data))
-
-
-table(dom_beh.data$condition, blocking.data$dom_beh_presence)
-```
-
-``` {r mixed modeling, error=TRUE}
-
-# centering variables for modeling
-
-model.data <- dom_beh.data %>% 
-  mutate(z.age = as.numeric(scale(age, scale = T, center = T)),
-         sex.c = as.numeric(scale(as.numeric(sex), scale = F, center = T)))
-
-as.data.frame(model.data)
-#view(dfSummary(model.data))
-```
 
 
 ```{r}
-dom_beh.glm01 <- glm(dom_beh_presence ~ human * treatment + z.age + sex, 
+dom_beh.glm01 <- glm(dom.beh.presence ~ human * treatment + z.age + sex, 
              data = model.data, family = binomial)
 
 summary(dom_beh.glm01)
 
 drop1(dom_beh.glm01, test="Chisq")#likelihood ratio test
 ```
+
 ```{r}
-dom_beh.glm02 <- glm(dom_beh_presence ~ human + treatment + z.age + sex, 
+dom_beh.glm02 <- glm(dom.beh.presence ~ human + treatment + z.age + sex, 
              data = model.data, family = binomial)
 
 summary(dom_beh.glm02)
@@ -513,26 +395,25 @@ drop1(dom_beh.glm02, test="Chisq")#likelihood ratio test
 
 ```{R echo=FALSE, error=FALSE, warning=FALSE}
 
-col.dom_beh.glm <- lm(dom_beh_presence ~ human + treatment + z.age + sex, data = model.data)
+col.dom_beh.glm <- lm(dom.beh.presence ~ human + treatment + z.age + sex, data = model.data)
 vif(col.dom_beh.glm)
 #no problem
 ```
 
 #### Model stability
 ```{r}
-cbind(coef(col.dom_beh.glm02),
-coef(col.dom_beh.glm02)+t(apply(X=dfbeta(col.dom_beh.glm02), MARGIN=2, FUN=range)))
+cbind(coef(dom_beh.glm02),coef(dom_beh.glm02)+t(apply(X=dfbeta(dom_beh.glm02), MARGIN=2, FUN=range)))
 ```
 
 #### Confidence intervals
 ```{r}
-cbind(orig=coefficients(col.dom_beh.glm02), confint(object=col.dom_beh.glm02))
+cbind(orig=coefficients(dom_beh.glm02), confint(object=dom_beh.glm02))
 ```
 
 ### CI for the plot
 
 ```{r}
-dom_beh.glm02.ci <- glm(dom_beh_presence ~ human + treatment + z.age + sex.c, 
+dom_beh.glm02.ci <- glm(dom.beh.presence ~ human + treatment + z.age + sex.c, 
              data = model.data, family = binomial)
 ##adding fitted values
 fv=rep(NA, times=4)
@@ -545,7 +426,7 @@ fv=exp(fv)/(1+exp(fv))
 
 to.plot <- model.data %>%
   group_by(human, treatment)%>%
-  summarise(mean.dom_beh=mean(dom_beh_presence))%>%
+  summarise(mean.dom_beh=mean(dom.beh.presence))%>%
   ungroup()
 
 to.plot$z.age=0
@@ -573,10 +454,10 @@ to.plot=(cbind(to.plot, fv, ci.plot))
 
 ```{r}
 
-dom_beh.plot.data <- dom_beh.data %>%
+dom_beh.plot.data <- model.data %>%
   mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
   group_by(condition, human, treatment)%>%
-  summarise(mean.dom_beh=mean(dom_beh_presence), sd.dom_beh=sd(dom_beh_presence),  median.dom_beh=median(dom_beh_presence),  se.dom_beh=sd(dom_beh_presence)/sqrt(length(dom_beh_presence)))
+  summarise(mean.dom_beh=mean(dom.beh.presence), sd.dom_beh=sd(dom.beh.presence),  median.dom_beh=median(dom.beh.presence),  se.dom_beh=sd(dom.beh.presence)/sqrt(length(dom.beh.presence)))
 
 dom_beh.plot.data <- cbind(as.data.frame(dom_beh.plot.data), fv, ci.plot)
 
