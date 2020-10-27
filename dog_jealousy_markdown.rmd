@@ -1,7 +1,7 @@
 ---
 title: "Dog Jealousy- analysis Script"
 author: "CV"
-date: "September 22, 2020"
+date: "October 27, 2020"
 output:
   pdf_document: default
   html_document: default
@@ -22,6 +22,7 @@ library(cowplot)
 library(glmmTMB)
 library(eeptools)
 library(car)
+library(ggsignif)
 
 
 #install.packages("")
@@ -199,16 +200,20 @@ blocking.plot.data <- agg.data %>%
 blocking.plot.data <- cbind(as.data.frame(blocking.plot.data), fv, ci.plot)
 
 plot.blocking <- ggplot(
-  data=blocking.plot.data, aes(x=interaction(treatment, human), y=mean.blocking)) +
-  geom_bar(stat="identity", alpha=0.5)+
-  geom_errorbar(aes(x=interaction(treatment, human), ymin=lwr, ymax=upr), width=.2) +
-  geom_point(aes(x=interaction(treatment, human), y=fv)) +
+  data=blocking.plot.data, aes(x=human, y=mean.blocking, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+              annotation=c("*"), y_position = 0.85)+
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
   ylim(0,1)+
   theme_classic()+
   labs(x="Condition",y="Proportion of blocking")
 
+plot.blocking
 
-ggsave(plot.blocking, filename = "graphs/blocking_plot.png", width = 10, height = 6, scale = 0.6)
+ggsave(plot.blocking, filename = "graphs/blocking_plot.png", width = 8, height = 6, scale = 0.65)
 ```
 
 
@@ -231,9 +236,8 @@ overdisp.test(blocking.glm03)
 
 blocking.glm04=glm.nb(blocking.sum ~ human * treatment + z.age + sex, data = model.data)
 
-
 overdisp.test(blocking.glm04)
---> not overdispersed
+#--> not overdispersed
 
 summary(blocking.glm04)
 
@@ -247,7 +251,7 @@ blocking.glm05=glm.nb(blocking.sum ~ human + treatment + z.age + sex, data = mod
 
 
 overdisp.test(blocking.glm05)
---> not overdispersed
+#--> not overdispersed
 
 summary(blocking.glm05)
 
@@ -355,17 +359,20 @@ non_off_manipulation.plot.data <- model.data %>%
 
 non_off_manipulation.plot.data <- cbind(as.data.frame(non_off_manipulation.plot.data), fv, ci.plot)
 
-plot.non_off_manipulation <- ggplot(
-  data=non_off_manipulation.plot.data, aes(x=interaction(treatment, human), y=mean.non_off_manipulation)) +
-  geom_bar(stat="identity", alpha=0.5)+
-  geom_errorbar(aes(x=interaction(treatment, human), ymin=lwr, ymax=upr), width=.2) +
-  geom_point(aes(x=interaction(treatment, human), y=fv)) +
+plot.non_off_manipulation <- ggplot(  data=non_off_manipulation.plot.data, aes(x=human, y=mean.non_off_manipulation, fill=treatment)) + 
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+              annotation=c("**"), y_position = 0.85)+
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
   ylim(0,1)+
   theme_classic()+
   labs(x="Condition",y="Proportion of non-offensive manipulation")
 
+plot.non_off_manipulation
 
-ggsave(plot.non_off_manipulation, filename = "graphs/non_off_manipulation_plot.png", width = 10, height = 6, scale = 0.6) # not running yet due to new csv file
+ggsave(plot.non_off_manipulation, filename = "graphs/non_off_manipulation_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
 ```
 
 
@@ -462,16 +469,336 @@ dom_beh.plot.data <- model.data %>%
 dom_beh.plot.data <- cbind(as.data.frame(dom_beh.plot.data), fv, ci.plot)
 
 plot.dom_beh <- ggplot(
-  data=dom_beh.plot.data, aes(x=interaction(treatment, human), y=mean.dom_beh)) +
-  geom_bar(stat="identity", alpha=0.5)+
-  geom_errorbar(aes(x=interaction(treatment, human), ymin=lwr, ymax=upr), width=.2) +
-  geom_point(aes(x=interaction(treatment, human), y=fv)) +
+  data=dom_beh.plot.data, aes(x=human, y=mean.dom_beh, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
   ylim(0,1)+
   theme_classic()+
   labs(x="Condition",y="Proportion of dominant behaviours")
+plot.dom_beh
 
-
-ggsave(plot.blocking, filename = "graphs/dom_beh_plot.png", width = 10, height = 6, scale = 0.6) # not running yet due to new csv file
+ggsave(plot.dom_beh , filename = "graphs/dom_beh_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
 ```
 
+
+
+
+
+## Interaction with fake dog
+
+
+```{r}
+int.glm01 <- glm(interaction.dog.presence ~ human * treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(int.glm01)
+
+drop1(int.glm01, test="Chisq")#likelihood ratio test
+
+```
+
+```{r}
+int.glm02 <- glm(interaction.dog.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(int.glm02)
+
+drop1(int.glm02, test="Chisq")#likelihood ratio test
+```
+
+#### check for colinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.int.glm <- lm(interaction.dog.presence ~ human + treatment + z.age + sex, data = model.data)
+vif(col.int.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(int.glm02),coef(int.glm02)+t(apply(X=dfbeta(int.glm02), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(int.glm02), confint(object=int.glm02))
+```
+
+### CI for the plot
+
+```{r}
+int.glm02.ci <- glm(interaction.dog.presence ~ human + treatment + z.age + sex.c, 
+             data = model.data, family = binomial)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(int.glm02.ci )["(Intercept)"]
+fv[2]=sum(coef(int.glm02.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(int.glm02.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(int.glm02.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)/(1+exp(fv))
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.int=mean(interaction.dog.presence))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=int.glm02.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=int.glm02.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=int.glm02.ci$df.residual))
+)
+ci.plot=exp(ci.plot)/(1+exp(ci.plot))
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
+
+### plotting
+
+```{r}
+
+int.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.int=mean(interaction.dog.presence), sd.int=sd(interaction.dog.presence),  median.int=median(interaction.dog.presence),  se.int=sd(interaction.dog.presence)/sqrt(length(interaction.dog.presence)))
+
+int.plot.data <- cbind(as.data.frame(int.plot.data), fv, ci.plot)
+
+
+stat.test <- data.frame(
+    stringsAsFactors=FALSE,
+    signif = c("", "", "**"),
+    y_position = c(0.65, 0.65, 0.7),
+    xmin = c(0.5, 0.5, .5),
+    xmax = c(0.5, 0.5, 0.5)
+  )
+
+
+plot.int <- ggplot(
+  data=int.plot.data, aes(x=human, y=mean.int, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+              annotation=c("*"), y_position = 0.85)+
+  #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
+  ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Proportion of interaction with fake dog")
+plot.int
+
+ggsave(plot.int , filename = "graphs/int_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+
+
+
+## Sniffing dog
+
+
+```{r}
+sniff.glm01 <- glm(sniffing.dog.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = poisson)
+
+overdisp.test((sniff.glm01))
+#highly overdispersed
+
+```
+```{r}
+sniff.glm01 <- glm(sniffing.dog.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = poisson)
+
+overdisp.test((sniff.glm01))
+#highly overdispersed
+summary(sniff.glm01)
+
+drop1(sniff.glm01, test="Chisq")#likelihood ratio test
+
+```
+
+```{r}
+sniff.glm01.nb=glm.nb(sniffing.dog.sum ~ human * treatment + z.age + sex, data = model.data)
+
+overdisp.test(sniff.glm01.nb)
+
+summary(sniff.glm01.nb)
+
+drop1(sniff.glm01.nb, test="Chisq")#likelihood ratio test
+```
+```{r}
+sniff.glm02.nb=glm.nb(sniffing.dog.sum ~ human + treatment + z.age + sex, data = model.data)
+
+overdisp.test(sniff.glm02.nb)
+
+summary(sniff.glm02.nb)
+
+drop1(sniff.glm02.nb, test="Chisq")#likelihood ratio test
+```
+#### check for colinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.sniff.glm <- lm(sniffing.dog.sum ~ human + treatment + z.age + sex, data = model.data)
+vif(col.sniff.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(sniff.glm02.nb),coef(sniff.glm02.nb)+t(apply(X=dfbeta(sniff.glm02.nb), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(sniff.glm02.nb), confint(object=sniff.glm02.nb))
+```
+
+### plotting
+
+```{r}
+
+sniff.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.sniff=mean(sniffing.dog.sum), sd.sniff=sd(sniffing.dog.sum),  median.sniff=median(sniffing.dog.sum),  se.sniff=sd(sniffing.dog.sum)/sqrt(length(sniffing.dog.sum)))
+
+#sniff.plot.data <- cbind(as.data.frame(sniff.plot.data), fv, ci.plot)
+
+
+plot.sniff <- ggplot(
+  data=sniff.plot.data, aes(x=human, y=mean.sniff, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  #geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  #geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  #geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+    #          annotation=c("*"), y_position = 0.85)+
+  #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
+ # ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Sniffing of fake dog (count)")
+plot.sniff
+
+ggsave(plot.sniff , filename = "graphs/int_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+## First approach of fake dog
+
+
+```{r}
+approach.glm01 <- glm(dog.approach.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(approach.glm01)
+
+drop1(approach.glm01, test="Chisq")#likelihood ratio test
+
+```
+
+```{r}
+approach.glm02 <- glm(dog.approach.sum ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(approach.glm02)
+
+drop1(approach.glm02, test="Chisq")#likelihood ratio test
+```
+
+#### check for colinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.approach.glm <- lm(dog.approach.sum ~ human + treatment + z.age + sex, data = model.data)
+vif(col.approach.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(approach.glm02),coef(approach.glm02)+t(apply(X=dfbeta(approach.glm02), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(approach.glm02), confint(object=approach.glm02))
+```
+
+### CI for the plot
+
+```{r}
+approach.glm02.ci <- glm(dog.approach.sum ~ human + treatment + z.age + sex.c, 
+             data = model.data, family = binomial)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(approach.glm02.ci )["(Intercept)"]
+fv[2]=sum(coef(approach.glm02.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(approach.glm02.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(approach.glm02.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)/(1+exp(fv))
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.approach=mean(dog.approach.sum))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=approach.glm02.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=approach.glm02.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=approach.glm02.ci$df.residual))
+)
+ci.plot=exp(ci.plot)/(1+exp(ci.plot))
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
+
+### plotting
+
+```{r}
+
+approach.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.approach=mean(dog.approach.sum), sd.approach=sd(dog.approach.sum),  median.approach=median(dog.approach.sum),  se.approach=sd(dog.approach.sum)/sqrt(length(dog.approach.sum)))
+
+approach.plot.data <- cbind(as.data.frame(approach.plot.data), fv, ci.plot)
+
+plot.approach <- ggplot(
+  data=approach.plot.data, aes(x=human, y=mean.approach, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
+  ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Proportion first approach of fake dog")
+plot.approach
+
+ggsave(plot.approach , filename = "graphs/approach_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
 
