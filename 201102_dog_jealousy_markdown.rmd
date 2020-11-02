@@ -1,0 +1,912 @@
+---
+title: "Dog Jealousy- analysis Script"
+author: "CV"
+date: "October 27, 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list=ls())
+
+
+library(lme4)
+library(MASS) # negative binomial tests
+library(ggthemes)
+library(psych)
+library(cowplot)
+library(glmmTMB)
+library(eeptools)
+library(car)
+library(ggsignif)
+
+
+#install.packages("")
+
+#load(file ="mm1_mult_poss.RData")
+
+library(exactRankTests)
+library(tidyverse)
+library(summarytools)
+better.wilcox2=function(var1, var2){
+  test.data=data.frame(var1, var2)
+  test.data=subset( test.data, var1 != var2)
+  N=nrow(test.data)
+  w.res=wilcox.exact (test.data$var1, test.data$var2, paired=T, exact=T, alternative = c("two.sided"))
+  wT=w.res$statistic
+  wT=max(c(wT, N*(N+1)/2- wT))
+return(data.frame(T.plus=wT, N=N, P=w.res$p.value) )
+}
+
+source("./functions/diagnostic_fcns.r")
+source("./functions/glmm_stability.r")
+source("./functions/boot_glmm.r")
+source("./functions/drop1_para.r")
+source("./comp_zeroinfl.r")
+
+```
+
+Notes:
+Maylo is doubled. Dusty has no values in reaction phase.--> already fixed
+
+Load raw data
+```{r loading data, include = FALSE}
+orig.data <- read.csv(file="data/201002_behavioural test_coding_data_all_dogs_new.csv")
+
+orig.data$test_date <- paste(orig.data$year, orig.data$month, orig.data$day,sep="-")
+
+orig.data$test_date <- as.Date(orig.data$test_date)
+orig.data$birthdate <- as.Date(orig.data$birthdate, "%d.%m.%Y")
+
+orig.data$age <- floor(age_calc(orig.data$birthdate, orig.data$test_date, units = "months"))
+
+view(dfSummary(orig.data))
+```
+
+Aggregate data
+```{r loading data, include = FALSE}
+agg.data<-orig.data %>%
+  mutate(blocking = ifelse(Value=="Blocking",1,0), non_off_manipulation = ifelse(Value=="Non-offensive manipulation",1,0), dom_beh = ifelse(Value=="Dominant behaviours",1,0), interaction_dog = ifelse(Value=="Interaction with fake dog",1,0), first_dog_approach = ifelse(Behaviour=="First approach" & Value=="Approach fake dog",1,0), sniffing_dog = ifelse(Value=="Sniffing fake dog" | Value=="Sniffing anal region of fake dog",1,0)) %>%
+  group_by(subject, breed, age, sex, condition, side_fakedog, side_chair) %>%
+  summarise(blocking.sum=sum(blocking), non.off.manipulation.sum=sum(non_off_manipulation), dom.beh.sum=sum(dom_beh), interaction.dog.sum=sum(interaction_dog), dog.approach.sum=sum(first_dog_approach), sniffing.dog.sum=sum(sniffing_dog))%>%
+  mutate(blocking.presence = ifelse(blocking.sum>0,1,0), non.off.manipulation.presence = ifelse(non.off.manipulation.sum>0,1,0), dom.beh.presence = ifelse(dom.beh.sum>0,1,0), interaction.dog.presence = ifelse(interaction.dog.sum>0,1,0), sniffing.dog.presence = ifelse(sniffing.dog.sum>0,1,0)) %>%
+  ungroup()
+
+agg.data$human <- as.factor(substring(agg.data$condition, 1,1))
+agg.data$treatment <- as.factor(substring(agg.data$condition, 2,2))
+
+view(dfSummary(agg.data))
+
+
+
+hist(agg.data$blocking.sum)
+hist(agg.data$non.off.manipulation.sum)
+hist(agg.data$dom.beh.sum)
+hist(agg.data$interaction.dog.sum)
+hist(agg.data$dog.approach.sum)
+hist(agg.data$sniffing.dog.sum)
+
+table(agg.data$condition, agg.data$blocking.presence)
+table(agg.data$condition, agg.data$non.off.manipulation.presence)
+table(agg.data$condition, agg.data$dom.beh.presence)
+```
+
+``` {r mixed modeling, error=TRUE}
+
+# centering variables for modeling
+
+model.data <- agg.data %>% 
+  mutate(z.age = as.numeric(scale(age, scale = T, center = T)),
+         sex.c = as.numeric(scale(as.numeric(sex), scale = F, center = T)))
+
+as.data.frame(model.data)
+#view(dfSummary(model.data))
+```
+
+
+### Blocking variable
+
+```{r}
+blocking.glm01 <- glm(blocking.presence ~ human * treatment + z.age + sex, 
+             data = model.data, family = binomial)
+# mit interaction
+summary(blocking.glm01)
+
+drop1(blocking.glm01, test="Chisq")#likelihood ratio test
+```
+
+```{r}
+blocking.glm02 <- glm(blocking.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+# ohne interaction
+summary(blocking.glm02)
+
+drop1(blocking.glm02, test="Chisq")#likelihood ratio test
+```
+
+#### full-null model comparison
+
+```{r}
+# full model
+blocking.glm02 <- glm(blocking.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+# null model
+blocking.glm02.null <- glm(blocking.presence ~ z.age + sex, 
+             data = model.data, family = binomial)
+
+# comparison
+anova(blocking.glm02, blocking.glm02.null, test="Chisq")
+# --> sign. 0.03
+
+```
+#### check for collinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.blocking.glm <- lm(blocking.presence ~ human + treatment + z.age + sex, data = model.data)
+# für collinearity check nur lm nehmen
+vif(col.blocking.glm)
+#no problem
+```
+
+
+
+#### Model stability
+```{r}
+cbind(coef(blocking.glm02), coef(blocking.glm02)+t(apply(X=dfbeta(blocking.glm02), MARGIN=2, FUN=range)))
+# min and max of model estimates
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(blocking.glm02), confint(object=blocking.glm02))
+```
+
+### CI for the plot
+
+```{r}
+blocking.glm02.ci <- glm(blocking.presence ~ human + treatment + z.age + sex.c, 
+             data = model.data, family = binomial)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(blocking.glm02.ci )["(Intercept)"]
+fv[2]=sum(coef(blocking.glm02.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(blocking.glm02.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(blocking.glm02.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)/(1+exp(fv))
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.blocking=mean(blocking.presence))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=blocking.glm02.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=blocking.glm02.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=blocking.glm02.ci$df.residual))
+)
+ci.plot=exp(ci.plot)/(1+exp(ci.plot))
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
+
+### plotting
+
+```{r}
+
+blocking.plot.data <- agg.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.blocking=mean(blocking.presence), sd.blocking=sd(blocking.presence),  median.blocking=median(blocking.presence),  se.blocking=sd(blocking.presence)/sqrt(length(blocking.presence)))
+
+blocking.plot.data <- cbind(as.data.frame(blocking.plot.data), fv, ci.plot)
+
+plot.blocking <- ggplot(
+  data=blocking.plot.data, aes(x=human, y=mean.blocking, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+              annotation=c("*"), y_position = 0.85)+
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Proportion of blocking")
+
+plot.blocking
+
+ggsave(plot.blocking, filename = "graphs/blocking_plot.png", width = 8, height = 6, scale = 0.65)
+```
+
+
+### Analysis of all blocking events (blocking.sum)
+
+```{r}
+hist(model.data$blocking.sum, breaks = c(0,1,2,3,4,5,6, 10))
+```
+
+```{r}
+blocking.glm03 <- glm(blocking.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = poisson)
+
+overdisp.test(blocking.glm03)
+```
+--> overdispersed. Try negative binomial model instead of poisson model
+
+```{r}
+
+
+blocking.glm04=glm.nb(blocking.sum ~ human * treatment + z.age + sex, data = model.data)
+
+overdisp.test(blocking.glm04)
+#--> not overdispersed
+
+summary(blocking.glm04)
+
+drop1(blocking.glm04, test="Chisq")#likelihood ratio test
+
+```
+
+
+```{r}
+blocking.glm05=glm.nb(blocking.sum ~ human + treatment + z.age + sex, data = model.data)
+
+
+overdisp.test(blocking.glm05)
+#--> not overdispersed
+
+summary(blocking.glm05)
+
+drop1(blocking.glm05, test="Chisq")#likelihood ratio test
+
+```
+--> same result as the binomial model with the blocking presence / absent DV
+
+
+### Non-offensive manipulation behaviours
+
+
+
+Notes:
+Maylo is doubled. Dusty has no values in reaction phase.--> already fixed
+new: there were mistakes in the birth dates of several dogs in data file --> fixed (csv file:".._new")
+
+
+
+
+```{r}
+non_off_manipulation.glm01 <- glm(non.off.manipulation.presence ~ human * treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(non_off_manipulation.glm01)
+
+drop1(non_off_manipulation.glm01, test="Chisq")#likelihood ratio test
+```
+```{r}
+non_off_manipulation.glm02 <- glm(non.off.manipulation.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(non_off_manipulation.glm02)
+
+drop1(non_off_manipulation.glm02, test="Chisq")#likelihood ratio test
+```
+
+#### full-null model comparison
+
+```{r}
+# full model
+non_off_manipulation.glm02 <- glm(non.off.manipulation.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+# null model
+non_off_manipulation.null <- glm(non.off.manipulation.presence ~ z.age + sex, 
+             data = model.data, family = binomial)
+
+# comparison
+anova(non_off_manipulation.glm02, non_off_manipulation.null, test="Chisq")
+# --> sign. 0.003
+
+```
+#### check for collinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.non_off_manipulation.glm <- lm(non.off.manipulation.presence ~ human + treatment + z.age + sex, data = model.data)
+vif(col.non_off_manipulation.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(non_off_manipulation.glm02), coef(non_off_manipulation.glm02)+t(apply(X=dfbeta(non_off_manipulation.glm02), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(non_off_manipulation.glm02), confint(object=non_off_manipulation.glm02))
+```
+
+### CI for the plot
+
+```{r}
+non_off_manipulation.glm02.ci <- glm(non.off.manipulation.presence ~ human + treatment + z.age + sex.c, 
+             data = model.data, family = binomial)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(non_off_manipulation.glm02.ci )["(Intercept)"]
+fv[2]=sum(coef(non_off_manipulation.glm02.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(non_off_manipulation.glm02.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(non_off_manipulation.glm02.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)/(1+exp(fv))
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.non_off_manipulation=mean(non.off.manipulation.presence))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=non_off_manipulation.glm02.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=non_off_manipulation.glm02.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=non_off_manipulation.glm02.ci$df.residual))
+)
+ci.plot=exp(ci.plot)/(1+exp(ci.plot))
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
+
+### plotting
+
+```{r}
+
+non_off_manipulation.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.non_off_manipulation=mean(non.off.manipulation.presence), sd.non_off_manipulation=sd(non.off.manipulation.presence),  median.non_off_manipulation=median(non.off.manipulation.presence),  se.non_off_manipulation=sd(non.off.manipulation.presence)/sqrt(length(non.off.manipulation.presence)))
+
+non_off_manipulation.plot.data <- cbind(as.data.frame(non_off_manipulation.plot.data), fv, ci.plot)
+
+plot.non_off_manipulation <- ggplot(  data=non_off_manipulation.plot.data, aes(x=human, y=mean.non_off_manipulation, fill=treatment)) + 
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+              annotation=c("**"), y_position = 0.85)+
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Proportion of non-offensive manipulation")
+
+plot.non_off_manipulation
+
+ggsave(plot.non_off_manipulation, filename = "graphs/non_off_manipulation_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+
+
+### Dominant behaviours
+
+
+
+```{r}
+dom_beh.glm01 <- glm(dom.beh.presence ~ human * treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(dom_beh.glm01)
+
+drop1(dom_beh.glm01, test="Chisq")#likelihood ratio test
+```
+
+```{r}
+dom_beh.glm02 <- glm(dom.beh.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(dom_beh.glm02)
+
+drop1(dom_beh.glm02, test="Chisq")#likelihood ratio test
+```
+
+#### full-null model comparison
+
+```{r}
+# full model
+dom_beh.glm02 <- glm(dom.beh.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+# null model
+dom_beh.null <- glm(dom.beh.presence ~ z.age + sex, 
+             data = model.data, family = binomial)
+
+# comparison
+anova(dom_beh.glm02, dom_beh.null, test="Chisq")
+# --> not sign. 0.799 (but also no sign. results in general - normally you would not continue if no sign. full null model comp.)
+
+```
+
+#### check for collinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.dom_beh.glm <- lm(dom.beh.presence ~ human + treatment + z.age + sex, data = model.data)
+vif(col.dom_beh.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(dom_beh.glm02),coef(dom_beh.glm02)+t(apply(X=dfbeta(dom_beh.glm02), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(dom_beh.glm02), confint(object=dom_beh.glm02))
+```
+
+### CI for the plot
+
+```{r}
+dom_beh.glm02.ci <- glm(dom.beh.presence ~ human + treatment + z.age + sex.c, 
+             data = model.data, family = binomial)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(dom_beh.glm02.ci )["(Intercept)"]
+fv[2]=sum(coef(dom_beh.glm02.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(dom_beh.glm02.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(dom_beh.glm02.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)/(1+exp(fv))
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.dom_beh=mean(dom.beh.presence))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=dom_beh.glm02.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=dom_beh.glm02.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=dom_beh.glm02.ci$df.residual))
+)
+ci.plot=exp(ci.plot)/(1+exp(ci.plot))
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
+
+### plotting
+
+```{r}
+
+dom_beh.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.dom_beh=mean(dom.beh.presence), sd.dom_beh=sd(dom.beh.presence),  median.dom_beh=median(dom.beh.presence),  se.dom_beh=sd(dom.beh.presence)/sqrt(length(dom.beh.presence)))
+
+dom_beh.plot.data <- cbind(as.data.frame(dom_beh.plot.data), fv, ci.plot)
+
+plot.dom_beh <- ggplot(
+  data=dom_beh.plot.data, aes(x=human, y=mean.dom_beh, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Proportion of dominant behaviours")
+plot.dom_beh
+
+ggsave(plot.dom_beh , filename = "graphs/dom_beh_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+
+
+
+
+
+## Interaction with fake dog
+
+
+```{r}
+int.glm01 <- glm(interaction.dog.presence ~ human * treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(int.glm01)
+
+drop1(int.glm01, test="Chisq")#likelihood ratio test
+
+```
+
+```{r}
+int.glm02 <- glm(interaction.dog.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(int.glm02)
+
+drop1(int.glm02, test="Chisq")#likelihood ratio test
+```
+
+#### full-null model comparison
+
+```{r}
+# full model
+int.glm02 <- glm(interaction.dog.presence ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+
+# null model
+int.null <- glm(interaction.dog.presence ~ z.age + sex, 
+             data = model.data, family = binomial)
+
+# comparison
+anova(int.glm02, int.null, test="Chisq")
+# --> sign. 0.004
+
+```
+
+#### check for collinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.int.glm <- lm(interaction.dog.presence ~ human + treatment + z.age + sex, data = model.data)
+vif(col.int.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(int.glm02),coef(int.glm02)+t(apply(X=dfbeta(int.glm02), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(int.glm02), confint(object=int.glm02))
+```
+
+### CI for the plot
+
+```{r}
+int.glm02.ci <- glm(interaction.dog.presence ~ human + treatment + z.age + sex.c, 
+             data = model.data, family = binomial)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(int.glm02.ci )["(Intercept)"]
+fv[2]=sum(coef(int.glm02.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(int.glm02.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(int.glm02.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)/(1+exp(fv))
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.int=mean(interaction.dog.presence))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=int.glm02.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=int.glm02.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=int.glm02.ci$df.residual))
+)
+ci.plot=exp(ci.plot)/(1+exp(ci.plot))
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
+
+### plotting
+
+```{r}
+
+int.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.int=mean(interaction.dog.presence), sd.int=sd(interaction.dog.presence),  median.int=median(interaction.dog.presence),  se.int=sd(interaction.dog.presence)/sqrt(length(interaction.dog.presence)))
+
+int.plot.data <- cbind(as.data.frame(int.plot.data), fv, ci.plot)
+
+
+stat.test <- data.frame(
+    stringsAsFactors=FALSE,
+    signif = c("", "", "**"),
+    y_position = c(0.65, 0.65, 0.7),
+    xmin = c(0.5, 0.5, .5),
+    xmax = c(0.5, 0.5, 0.5)
+  )
+
+
+plot.int <- ggplot(
+  data=int.plot.data, aes(x=human, y=mean.int, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+              annotation=c("*"), y_position = 0.85)+
+  #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
+  ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Proportion of interaction with fake dog")
+plot.int
+
+ggsave(plot.int , filename = "graphs/int_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+
+
+
+## Sniffing dog
+
+
+```{r}
+sniff.glm01 <- glm(sniffing.dog.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = poisson)
+
+overdisp.test((sniff.glm01))
+#highly overdispersed
+
+```
+```{r}
+sniff.glm01 <- glm(sniffing.dog.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = poisson)
+
+overdisp.test((sniff.glm01))
+#highly overdispersed --> not Poisson distr. - try neg. binomial!
+summary(sniff.glm01)
+
+drop1(sniff.glm01, test="Chisq")#likelihood ratio test
+
+```
+
+```{r}
+sniff.glm01.nb=glm.nb(sniffing.dog.sum ~ human * treatment + z.age + sex, data = model.data)
+
+overdisp.test(sniff.glm01.nb)
+
+summary(sniff.glm01.nb)
+
+drop1(sniff.glm01.nb, test="Chisq")#likelihood ratio test
+```
+```{r}
+sniff.glm02.nb=glm.nb(sniffing.dog.sum ~ human + treatment + z.age + sex, data = model.data)
+
+overdisp.test(sniff.glm02.nb)
+# --> 0.9
+
+summary(sniff.glm02.nb)
+
+drop1(sniff.glm02.nb, test="Chisq")#likelihood ratio test
+```
+
+#### full-null model comparison
+
+```{r}
+# full model
+sniff.glm02.nb=glm.nb(sniffing.dog.sum ~ human + treatment + z.age + sex, data = model.data)
+
+
+# null model
+sniff.null.nb <- glm(sniffing.dog.sum ~ z.age + sex, 
+             data = model.data)
+
+# comparison
+comp.zeroinfl(sniff.glm02.nb, sniff.null.nb, test="Chisq") # anova not possible for neg. binomial
+# --> 
+
+```
+
+#### check for collinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.sniff.glm <- lm(sniffing.dog.sum ~ human + treatment + z.age + sex, data = model.data)
+vif(col.sniff.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(sniff.glm02.nb),coef(sniff.glm02.nb)+t(apply(X=dfbeta(sniff.glm02.nb), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(sniff.glm02.nb), confint(object=sniff.glm02.nb))
+```
+
+### plotting
+
+```{r}
+
+sniff.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.sniff=mean(sniffing.dog.sum), sd.sniff=sd(sniffing.dog.sum),  median.sniff=median(sniffing.dog.sum),  se.sniff=sd(sniffing.dog.sum)/sqrt(length(sniffing.dog.sum)))
+
+#sniff.plot.data <- cbind(as.data.frame(sniff.plot.data), fv, ci.plot)
+# CIs for neg. binmiol needed! --> in Rogers script steht er empfiehlt bootstrappen --> boot.gmm.r fct. möglich? habe keine andere...
+
+plot.sniff <- ggplot(
+  data=sniff.plot.data, aes(x=human, y=mean.sniff, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  #geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  #geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  #geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+    #          annotation=c("*"), y_position = 0.85)+
+  #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
+ # ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Sniffing of fake dog (count)")
+plot.sniff
+
+ggsave(plot.sniff , filename = "graphs/int_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+
+## First approach of fake dog
+
+
+```{r}
+approach.glm01 <- glm(dog.approach.sum ~ human * treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(approach.glm01)
+
+drop1(approach.glm01, test="Chisq")#likelihood ratio test
+
+```
+
+```{r}
+approach.glm02 <- glm(dog.approach.sum ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+summary(approach.glm02)
+
+drop1(approach.glm02, test="Chisq")#likelihood ratio test
+```
+
+#### full-null model comparison
+
+```{r}
+# full model
+approach.glm02 <- glm(dog.approach.sum ~ human + treatment + z.age + sex, 
+             data = model.data, family = binomial)
+
+
+# null model
+approach.null <- glm(dog.approach.sum ~ z.age + sex, 
+             data = model.data, family = binomial)
+
+# comparison
+anova(approach.glm02, approach.null, test="Chisq")
+# --> sign. 0.01
+
+```
+
+#### check for collinearity in the previous model.
+
+```{R echo=FALSE, error=FALSE, warning=FALSE}
+
+col.approach.glm <- lm(dog.approach.sum ~ human + treatment + z.age + sex, data = model.data)
+vif(col.approach.glm)
+#no problem
+```
+
+#### Model stability
+```{r}
+cbind(coef(approach.glm02),coef(approach.glm02)+t(apply(X=dfbeta(approach.glm02), MARGIN=2, FUN=range)))
+```
+
+#### Confidence intervals
+```{r}
+cbind(orig=coefficients(approach.glm02), confint(object=approach.glm02))
+```
+
+### CI for the plot
+
+```{r}
+approach.glm02.ci <- glm(dog.approach.sum ~ human + treatment + z.age + sex.c, 
+             data = model.data, family = binomial)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(approach.glm02.ci )["(Intercept)"]
+fv[2]=sum(coef(approach.glm02.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(approach.glm02.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(approach.glm02.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)/(1+exp(fv))
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.approach=mean(dog.approach.sum))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=approach.glm02.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=approach.glm02.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=approach.glm02.ci$df.residual))
+)
+ci.plot=exp(ci.plot)/(1+exp(ci.plot))
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
+
+### plotting
+
+```{r}
+
+approach.plot.data <- model.data %>%
+  mutate(human = fct_recode(human, "Caregiver" = "C", "Stranger" = "S"), treatment=fct_recode(treatment, "Vet Check"="M", "Greeting"="P"))%>% #renaming of factor levels
+  group_by(condition, human, treatment)%>%
+  summarise(mean.approach=mean(dog.approach.sum), sd.approach=sd(dog.approach.sum),  median.approach=median(dog.approach.sum),  se.approach=sd(dog.approach.sum)/sqrt(length(dog.approach.sum)))
+
+approach.plot.data <- cbind(as.data.frame(approach.plot.data), fv, ci.plot)
+
+plot.approach <- ggplot(
+  data=approach.plot.data, aes(x=human, y=mean.approach, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("dodgerblue","darkorange"))+
+  #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
+  ylim(0,1)+
+  theme_classic()+
+  labs(x="Condition",y="Proportion first approach of fake dog")
+plot.approach
+
+ggsave(plot.approach , filename = "graphs/approach_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+
