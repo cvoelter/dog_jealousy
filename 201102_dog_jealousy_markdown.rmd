@@ -46,7 +46,7 @@ source("./functions/diagnostic_fcns.r")
 source("./functions/glmm_stability.r")
 source("./functions/boot_glmm.r")
 source("./functions/drop1_para.r")
-source("./comp_zeroinfl.r")
+#source("./comp_zeroinfl.r")
 
 ```
 
@@ -228,11 +228,12 @@ plot.blocking <- ggplot(
   scale_fill_manual(values=c("dodgerblue","darkorange"))+
   ylim(0,1)+
   theme_classic()+
-  labs(x="Condition",y="Proportion of blocking")
+  labs(x="Condition",y="Blocking")+
+  theme(legend.position = "none")
 
 plot.blocking
 
-ggsave(plot.blocking, filename = "graphs/blocking_plot.png", width = 8, height = 6, scale = 0.65)
+#ggsave(plot.blocking, filename = "graphs/blocking_plot.png", width = 8, height = 6, scale = 0.65)
 ```
 
 
@@ -403,11 +404,12 @@ plot.non_off_manipulation <- ggplot(  data=non_off_manipulation.plot.data, aes(x
   scale_fill_manual(values=c("dodgerblue","darkorange"))+
   ylim(0,1)+
   theme_classic()+
-  labs(x="Condition",y="Proportion of non-offensive manipulation")
+  labs(x="Condition",y="Non-offensive manipulation")+
+  theme(legend.position = "none")
 
 plot.non_off_manipulation
 
-ggsave(plot.non_off_manipulation, filename = "graphs/non_off_manipulation_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+#ggsave(plot.non_off_manipulation, filename = "graphs/non_off_manipulation_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
 ```
 
 
@@ -528,10 +530,12 @@ plot.dom_beh <- ggplot(
   scale_fill_manual(values=c("dodgerblue","darkorange"))+
   ylim(0,1)+
   theme_classic()+
-  labs(x="Condition",y="Proportion of dominant behaviours")
+  labs(x="Condition",y="Dominant behaviours")+
+   theme(legend.title = element_blank(), legend.position = c(0.8, 0.9))
+  #theme(legend.position = "none")
 plot.dom_beh
 
-ggsave(plot.dom_beh , filename = "graphs/dom_beh_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+#ggsave(plot.dom_beh , filename = "graphs/dom_beh_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
 ```
 
 
@@ -669,7 +673,8 @@ plot.int <- ggplot(
   #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
   ylim(0,1)+
   theme_classic()+
-  labs(x="Condition",y="Proportion of interaction with fake dog")
+  labs(x="Condition",y="Interaction with fake dog")+
+  theme(legend.position = "none")
 plot.int
 
 ggsave(plot.int , filename = "graphs/int_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
@@ -728,11 +733,11 @@ sniff.glm02.nb=glm.nb(sniffing.dog.sum ~ human + treatment + z.age + sex, data =
 
 
 # null model
-sniff.null.nb <- glm(sniffing.dog.sum ~ z.age + sex, 
+sniff.null.nb <- glm.nb(sniffing.dog.sum ~ z.age + sex, 
              data = model.data)
 
 # comparison
-comp.zeroinfl(sniff.glm02.nb, sniff.null.nb, test="Chisq") # anova not possible for neg. binomial
+anova(sniff.glm02.nb, sniff.null.nb, test="Chisq") # anova not possible for neg. binomial
 # --> 
 
 ```
@@ -756,6 +761,45 @@ cbind(coef(sniff.glm02.nb),coef(sniff.glm02.nb)+t(apply(X=dfbeta(sniff.glm02.nb)
 cbind(orig=coefficients(sniff.glm02.nb), confint(object=sniff.glm02.nb))
 ```
 
+### CI for the plot
+
+```{r}
+
+sniff.glm02.nb.ci=glm.nb(sniffing.dog.sum ~ human + treatment + z.age + sex.c, data = model.data)
+##adding fitted values
+fv=rep(NA, times=4)
+fv[1]=coef(sniff.glm02.nb.ci )["(Intercept)"]
+fv[2]=sum(coef(sniff.glm02.nb.ci)[c("(Intercept)", "treatmentP")])
+fv[3]=sum(coef(sniff.glm02.nb.ci)[c("(Intercept)", "humanS")])
+fv[4]=sum(coef(sniff.glm02.nb.ci)[c("(Intercept)", "treatmentP",
+"humanS")])
+fv=exp(fv)
+
+to.plot <- model.data %>%
+  group_by(human, treatment)%>%
+  summarise(mean.int=mean(sniffing.dog.sum))%>%
+  ungroup()
+
+to.plot$z.age=0
+to.plot$sex.c=0
+
+
+ci.plot=predict.glm(object=sniff.glm02.nb.ci, newdata=to.plot,type="link", se.fit=T)
+
+
+ci.plot=data.frame(
+lwr=ci.plot$fit-ci.plot$se.fit*
+abs(qt(p=0.025, df=sniff.glm02.nb.ci$df.residual)),
+upr=ci.plot$fit+ci.plot$se.fit*
+abs(qt(p=0.025, df=sniff.glm02.nb.ci$df.residual))
+)
+ci.plot=exp(ci.plot)
+
+to.plot=(cbind(to.plot, fv, ci.plot))
+
+```
+
+
 ### plotting
 
 ```{r}
@@ -765,24 +809,24 @@ sniff.plot.data <- model.data %>%
   group_by(condition, human, treatment)%>%
   summarise(mean.sniff=mean(sniffing.dog.sum), sd.sniff=sd(sniffing.dog.sum),  median.sniff=median(sniffing.dog.sum),  se.sniff=sd(sniffing.dog.sum)/sqrt(length(sniffing.dog.sum)))
 
-#sniff.plot.data <- cbind(as.data.frame(sniff.plot.data), fv, ci.plot)
-# CIs for neg. binmiol needed! --> in Rogers script steht er empfiehlt bootstrappen --> boot.gmm.r fct. möglich? habe keine andere...
+sniff.plot.data <- cbind(as.data.frame(sniff.plot.data), fv, ci.plot)
 
 plot.sniff <- ggplot(
   data=sniff.plot.data, aes(x=human, y=mean.sniff, fill=treatment)) +
   geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
-  #geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
-  #geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width = 0.5,position=position_dodge(width = 0.9)) +
+  geom_point(aes(y=fv), position=position_dodge(width = 0.9)) +
   scale_fill_manual(values=c("dodgerblue","darkorange"))+
-  #geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
-    #          annotation=c("*"), y_position = 0.85)+
+  geom_signif(comparisons = list(c("Caregiver", "Stranger")), 
+              annotation=c("*"), y_position = 14.5)+
   #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
- # ylim(0,1)+
-  theme_classic()+
-  labs(x="Condition",y="Sniffing of fake dog (count)")
+   ylim(0,15)+
+   theme_classic()+
+  labs(x="Condition",y="Sniffing of fake dog (count)")+
+  theme(legend.position = "none")
 plot.sniff
 
-ggsave(plot.sniff , filename = "graphs/int_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+#ggsave(plot.sniff , filename = "graphs/sniffing_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
 ```
 
 ## First approach of fake dog
@@ -904,9 +948,35 @@ plot.approach <- ggplot(
   #geom_signif(aes(xmin = xmin, xmax = xmax, y_position = y_position, annotations = signif), data=stat.test, manual = TRUE, tip_length = 0)+
   ylim(0,1)+
   theme_classic()+
-  labs(x="Condition",y="Proportion first approach of fake dog")
+  labs(x="Condition",y="First approach of fake dog")+
+  theme(legend.position = "none")
 plot.approach
 
-ggsave(plot.approach , filename = "graphs/approach_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+#ggsave(plot.approach , filename = "graphs/approach_plot.png", width = 8, height = 6, scale = 0.65) # not running yet due to new csv file
+```
+
+### combining plots
+
+
+```{r}
+plot.legend <- ggplot(
+  data=approach.plot.data, aes(x=human, y=mean.approach, fill=treatment)) +
+  geom_bar(stat="identity", alpha=0.5, position=position_dodge(width = 0.9))+
+    scale_fill_manual(values=c("dodgerblue","darkorange"))+
+    theme(legend.position = "top", legend.title = element_blank())
+plot.legend
+
+p.leg <- get_legend(plot.legend)
+
+```
+
+```{r}
+
+pg<-plot_grid(plot.blocking, plot.dom_beh, plot.int, plot.non_off_manipulation, plot.sniff, plot.approach, ncol=2, labels = c("A", "B", "C", "D", "E", "F"))
+pg
+#pg.leg<-plot_grid(p.leg, pg, rel_heights = c(0.1, 1), ncol=1)
+#pg.leg
+ggsave(pg, filename = "graphs/jealousy_all_DVs.png", width = 10, height = 15, scale=0.6)
+
 ```
 
