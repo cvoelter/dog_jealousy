@@ -154,6 +154,60 @@ ggsave(attitude.plot, filename = "graphs/attitude_plot.png", width=8, height=4,s
 ```
 
 
+binary version but only intro phase
+
+Load raw data
+```{r loading data, include = FALSE}
+agg.data<-read.csv("data/dog_jealousy_aggregated_data.csv")
+
+intro.data<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_questionnaires_updated_mistakes_new.xlsx", sheet = 'Kata_phases_explanations', na = c('NA'))%>%
+  select(Dog_name, Breed, "Age (years)", Sex, Condition, attitude_Introduction_phase,first_approach_in_reaction_phase)%>%
+  rename(age="Age (years)", intro=attitude_Introduction_phase, react=first_approach_in_reaction_phase)%>%
+  filter(!is.na(react))%>%
+  mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
+  mutate(intro=as.factor(intro))%>%
+  mutate(intro=fct_recode(intro, "Insecure-Offensive"="Insecure-offensive"))%>%
+  mutate(attitude=ifelse(intro=="Neutral" |intro=="Friendly", 1,0),attitude2=ifelse(intro=="Neutral" |intro=="Friendly", "good","bad"), age=as.numeric(age))%>%
+  rename(subject="Dog_name")%>%
+  select(subject, intro, attitude, attitude2)%>%
+  mutate(subject=fct_recode(subject, "Baerbel"="Bärbel", "Eisbaer"="Eisbär", "Fiby"="Fiby2", "Finja"="Finja2", "Jo-jo3"="Jo-Jo3", "Maedi"="Mädi", "Mia"="Mia7", "Muesli"="Müsli",  "Nana"="Nana3", "Ronja"="Ronja4", "Yuki"="Yuki4"))%>%
+  left_join(agg.data)%>%
+  mutate(z.age = scale(age))
+
+
+summary(intro.data)
+ggsave(attitude.plot, filename = "graphs/attitude_plot.png", width=8, height=4,scale=0.8)
+
+```
+
+```{r}
+
+attitude.model05.binary<-glm(attitude~treatment+human+treatment:human+ sex+z.age, data=intro.data, family = binomial)
+
+summary(attitude.model05.binary)
+drop1(attitude.model05.binary, test="Chisq")
+```
+
+
+```{r}
+
+intro.agg<-intro.data%>%
+  group_by(treatment, human)%>%
+  summarise(mean=mean(attitude), se = sd(attitude)/sqrt(length(attitude)))%>%
+  mutate(human=fct_recode(human, "Caregiver"="C", "Stranger"="S"), treatment=fct_recode(treatment, "Petting"="P", "Vet Check"="M"))
+
+attitude.plot.intro<-ggplot(data=intro.agg, aes(y=mean, x=treatment))+
+  geom_bar(stat="identity")+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2)+
+  facet_wrap(~human)+
+  theme_few()
+
+attitude.plot.intro
+
+ggsave(attitude.plot.intro, filename = "graphs/attitude_plot_intro.png", width=8, height=4,scale=0.8)
+```
+
+
 
 ```{r}
 
