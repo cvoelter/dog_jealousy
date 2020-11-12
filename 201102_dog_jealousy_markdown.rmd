@@ -65,6 +65,9 @@ orig.data$birthdate <- as.Date(orig.data$birthdate, "%d.%m.%Y")
 orig.data$age <- floor(age_calc(orig.data$birthdate, orig.data$test_date, units = "months"))
 
 view(dfSummary(orig.data))
+
+
+
 ```
 
 Aggregate data
@@ -93,6 +96,9 @@ hist(agg.data$sniffing.dog.sum)
 table(agg.data$condition, agg.data$blocking.presence)
 table(agg.data$condition, agg.data$non.off.manipulation.presence)
 table(agg.data$condition, agg.data$dom.beh.presence)
+
+
+write.csv(agg.data, file = "data/dog_jealousy_aggregated_data.csv")
 ```
 
 ``` {r mixed modeling, error=TRUE}

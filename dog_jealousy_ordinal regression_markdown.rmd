@@ -1,0 +1,218 @@
+---
+title: "Dog Jealousy- analysis Script"
+author: "CV"
+date: "October 27, 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list=ls())
+library(lme4)
+library(ggthemes)
+library(psych)
+library(cowplot)
+library(car)
+library(ggsignif)
+library(ordinal)
+library(tidyverse)
+library(summarytools)
+library(readxl)
+source("./functions/diagnostic_fcns.r")
+source("./functions/glmm_stability.r")
+source("./functions/boot_glmm.r")
+source("./functions/drop1_para.r")
+
+```
+
+Notes:
+
+Load raw data
+```{r loading data, include = FALSE}
+xdata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_questionnaires_updated_mistakes_new.xlsx", sheet = 'Kata_phases_explanations', na = c('NA'))%>%
+  select(Dog_name, Breed, "Age (years)", Sex, Condition, attitude_Introduction_phase,first_approach_in_reaction_phase)%>%
+  rename(age="Age (years)", intro=attitude_Introduction_phase, react=first_approach_in_reaction_phase)%>%
+  filter(!is.na(react))%>%
+  mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
+  gather(phase, attitude,intro, react)%>%
+  mutate(attitude=as.factor(attitude))%>%
+  mutate(attitude=fct_recode(attitude, "Insecure-Offensive"="Insecure-offensive"))%>%
+  mutate(mood=ifelse(attitude=="Neutral" |attitude=="Friendly", 1,0),mood2=ifelse(attitude=="Neutral" |attitude=="Friendly", "good","bad"))
+
+#Bring the categories in the correct order
+xdata$attitude=factor(xdata$attitude,
+levels=levels(xdata$attitude)[c(1, 4, 2, 3, 5)])
+levels(xdata$attitude)
+
+```
+
+
+``` {r mixed modeling, error=TRUE}
+
+view(dfSummary(xdata))
+```
+
+### Ordinal regression
+
+
+fit model
+```{r}
+
+attitude.model01<-clmm(attitude~phase*treatment*human+ (1|Dog_name), data=xdata)
+summary(attitude.model01)
+drop1(attitude.model01, test="Chisq")
+```
+binary version:
+```{r}
+
+attitude.model01.binary<-glmer(mood~phase*treatment*human+ (1|Dog_name), data=xdata, family = binomial, control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+summary(attitude.model01.binary)
+drop1(attitude.model01.binary, test="Chisq")
+```
+
+
+
+```{r}
+
+attitude.model02<-clmm(attitude~phase+treatment+human+phase:treatment+phase:human+ (1|Dog_name), data=xdata)
+summary(attitude.model02)
+drop1(attitude.model02, test="Chisq")
+```
+binary version:
+```{r}
+
+attitude.model02.binary<-glmer(mood~phase+treatment+human+phase:treatment+phase:human+ treatment:human+ (1|Dog_name), data=xdata, family = binomial, control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+summary(attitude.model02.binary)
+drop1(attitude.model02.binary, test="Chisq")
+```
+binary version:
+```{r}
+
+attitude.model03.binary<-glmer(mood~phase+treatment+human+ treatment:human+ (1|Dog_name), data=xdata, family = binomial, control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+summary(attitude.model03.binary)
+drop1(attitude.model03.binary, test="Chisq")
+```
+
+binary version but only reaction phase
+
+Load raw data
+```{r loading data, include = FALSE}
+agg.data<-read.csv("data/dog_jealousy_aggregated_data.csv")
+
+zdata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_questionnaires_updated_mistakes_new.xlsx", sheet = 'Kata_phases_explanations', na = c('NA'))%>%
+  select(Dog_name, Breed, "Age (years)", Sex, Condition, attitude_Introduction_phase,first_approach_in_reaction_phase)%>%
+  rename(age="Age (years)", intro=attitude_Introduction_phase, react=first_approach_in_reaction_phase)%>%
+  filter(!is.na(react))%>%
+  mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
+  mutate(react=as.factor(react))%>%
+  mutate(react=fct_recode(react, "Insecure-Offensive"="Insecure-offensive"))%>%
+  mutate(attitude=ifelse(react=="Neutral" |react=="Friendly", 1,0),attitude2=ifelse(react=="Neutral" |react=="Friendly", "good","bad"), age=as.numeric(age))%>%
+  rename(subject="Dog_name")%>%
+  select(subject, react, attitude, attitude2)%>%
+  mutate(subject=fct_recode(subject, "Baerbel"="Bärbel", "Eisbaer"="Eisbär", "Fiby"="Fiby2", "Finja"="Finja2", "Jo-jo3"="Jo-Jo3", "Maedi"="Mädi", "Mia"="Mia7", "Muesli"="Müsli",  "Nana"="Nana3", "Ronja"="Ronja4", "Yuki"="Yuki4"))%>%
+  left_join(agg.data)%>%
+  mutate(z.age = scale(age))
+
+
+summary(zdata)
+
+
+```
+
+```{r}
+
+attitude.model04.binary<-glm(attitude~treatment+human+treatment:human+ sex+z.age, data=zdata, family = binomial)
+
+summary(attitude.model04.binary)
+drop1(attitude.model04.binary, test="Chisq")
+```
+plotting interaction
+
+```{r}
+
+zdata.agg<-zdata%>%
+  group_by(treatment, human)%>%
+  summarise(mean=mean(attitude), se = sd(attitude)/sqrt(length(attitude)))
+
+ggplot(data=zdata.agg, aes(y=mean, x=treatment))+
+  geom_bar(stat="identity")+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2)+
+  facet_wrap(~human)+
+  theme_few()
+```
+
+
+
+```{r}
+
+attitude.model03<-clmm(attitude~phase+treatment+human+ (1|Dog_name), data=xdata)
+summary(attitude.model03)
+drop1(attitude.model03, test="Chisq")
+```
+
+```{r}
+ggplot(data=xdata, aes(x=attitude))+
+  geom_histogram(stat="count")+
+  facet_wrap(human~phase)+
+  theme_few()
+
+```
+## Plotting binary data
+
+```{r}
+
+agg.data<-xdata%>%
+  group_by(Dog_name, treatment, human)%>%
+  summarise()
+ggplot(data=xdata, aes(x=mood2))+
+  geom_histogram(stat="count")+
+  facet_wrap(human~treatment)+
+  theme_few()
+
+```
+```{r}
+
+agg.data<-xdata%>%
+  group_by(Dog_name, treatment, human)%>%
+  summarise(mood=mean(mood))
+
+ggplot(data=agg.data, aes(y=mood, x=treatment))+
+  geom_boxplot()+
+  facet_wrap(~human)+
+  theme_few()
+
+```
+
+## Intro vs interaction phase
+
+```{r loading data, include = FALSE}
+ydata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_questionnaires_updated_mistakes_new.xlsx", sheet = 'Kata_phases_explanations', na = c('NA'))%>%
+  select(Dog_name, Breed, "Age (years)", Sex, Condition, attitude_Introduction_phase,attitude_interaction_phase)%>% 
+  rename(age="Age (years)", intro=attitude_Introduction_phase, interact=attitude_interaction_phase)%>%
+  mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
+  gather(phase, attitude,intro, interact)%>%
+  mutate(attitude=as.factor(attitude))%>%
+  mutate(attitude=fct_recode(attitude, "Insecure-Offensive"="Insecure-offensive"))
+
+#Bring the categories in the correct order
+ydata$attitude=factor(ydata$attitude,
+levels=levels(ydata$attitude)[c(1, 4, 2, 3, 5)])
+levels(ydata$attitude)
+
+```
+
+```{r}
+ggplot(data=ydata, aes(x=attitude))+
+  geom_histogram(stat="count")+
+  facet_wrap(~phase)+
+  theme_few()
+
+```
+
