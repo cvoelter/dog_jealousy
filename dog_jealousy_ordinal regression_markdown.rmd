@@ -139,13 +139,18 @@ plotting interaction
 
 zdata.agg<-zdata%>%
   group_by(treatment, human)%>%
-  summarise(mean=mean(attitude), se = sd(attitude)/sqrt(length(attitude)))
+  summarise(mean=mean(attitude), se = sd(attitude)/sqrt(length(attitude)))%>%
+  mutate(human=fct_recode(human, "Caregiver"="C", "Stranger"="S"), treatment=fct_recode(treatment, "Petting"="P", "Vet Check"="M"))
 
-ggplot(data=zdata.agg, aes(y=mean, x=treatment))+
+attitude.plot<-ggplot(data=zdata.agg, aes(y=mean, x=treatment))+
   geom_bar(stat="identity")+
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=0.2)+
   facet_wrap(~human)+
   theme_few()
+
+attitude.plot
+
+ggsave(attitude.plot, filename = "graphs/attitude_plot.png", width=8, height=4,scale=0.8)
 ```
 
 
