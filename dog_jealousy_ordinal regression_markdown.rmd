@@ -38,7 +38,7 @@ xdata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_q
   rename(age="Age (years)", intro=attitude_Introduction_phase, react=first_approach_in_reaction_phase)%>%
   filter(!is.na(react))%>%
   mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
-  gather(phase, attitude,intro, react)%>%
+  gather(phase, attitude,intro, react)%>% #reformatting from wide to long
   mutate(attitude=as.factor(attitude))%>%
   mutate(attitude=fct_recode(attitude, "Insecure-Offensive"="Insecure-offensive"))%>%
   mutate(mood=ifelse(attitude=="Neutral" |attitude=="Friendly", 1,0),mood2=ifelse(attitude=="Neutral" |attitude=="Friendly", "good","bad"))
@@ -52,7 +52,6 @@ levels(xdata$attitude)
 
 
 ``` {r mixed modeling, error=TRUE}
-
 view(dfSummary(xdata))
 ```
 
@@ -61,11 +60,11 @@ view(dfSummary(xdata))
 
 fit model
 ```{r}
-
 attitude.model01<-clmm(attitude~phase*treatment*human+ (1|Dog_name), data=xdata)
 summary(attitude.model01)
 drop1(attitude.model01, test="Chisq")
 ```
+
 binary version:
 ```{r}
 
@@ -79,7 +78,7 @@ drop1(attitude.model01.binary, test="Chisq")
 
 ```{r}
 
-attitude.model02<-clmm(attitude~phase+treatment+human+phase:treatment+phase:human+ (1|Dog_name), data=xdata)
+attitude.model02<-clmm(attitude~phase+treatment+human+phase:treatment+phase:human+treatment:human+ (1|Dog_name), data=xdata)
 summary(attitude.model02)
 drop1(attitude.model02, test="Chisq")
 ```
@@ -123,7 +122,7 @@ zdata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_q
 
 summary(zdata)
 
-
+write.csv(zdata, file = "data/dog_jealousy_attitude_first_reaction_combined.csv")
 ```
 
 ```{r}
@@ -167,7 +166,7 @@ intro.data<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Du
   mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
   mutate(intro=as.factor(intro))%>%
   mutate(intro=fct_recode(intro, "Insecure-Offensive"="Insecure-offensive"))%>%
-  mutate(attitude=ifelse(intro=="Neutral" |intro=="Friendly", 1,0),attitude2=ifelse(intro=="Neutral" |intro=="Friendly", "good","bad"), age=as.numeric(age))%>%
+  mutate(attitude=ifelse(intro=="Neutral" |intro=="Friendly", 1,0),attitude2=ifelse(intro=="Neutral" |intro=="Friendly", "good","bad"), age=as.numeric(age))%>%  ##attitude calculated based on introduction phase
   rename(subject="Dog_name")%>%
   select(subject, intro, attitude, attitude2)%>%
   mutate(subject=fct_recode(subject, "Baerbel"="Bärbel", "Eisbaer"="Eisbär", "Fiby"="Fiby2", "Finja"="Finja2", "Jo-jo3"="Jo-Jo3", "Maedi"="Mädi", "Mia"="Mia7", "Muesli"="Müsli",  "Nana"="Nana3", "Ronja"="Ronja4", "Yuki"="Yuki4"))%>%
@@ -176,7 +175,10 @@ intro.data<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Du
 
 
 summary(intro.data)
-ggsave(attitude.plot, filename = "graphs/attitude_plot.png", width=8, height=4,scale=0.8)
+
+table(intro.data$breed, intro.data$attitude2)
+
+table(intro.data$breed, intro.data$condition)
 
 ```
 
@@ -219,7 +221,7 @@ drop1(attitude.model03, test="Chisq")
 ```{r}
 ggplot(data=xdata, aes(x=attitude))+
   geom_histogram(stat="count")+
-  facet_wrap(human~phase)+
+  facet_wrap(~human)+
   theme_few()
 
 ```
