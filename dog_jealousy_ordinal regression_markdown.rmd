@@ -45,7 +45,7 @@ xdata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_q
 
 #Bring the categories in the correct order
 xdata$attitude=factor(xdata$attitude,
-levels=levels(xdata$attitude)[c(1, 4, 2, 3, 5)])
+levels=levels(xdata$attitude)[c(4, 1, 2, 3, 5)])
 levels(xdata$attitude)
 
 ```
