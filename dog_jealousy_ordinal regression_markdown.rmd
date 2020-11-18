@@ -254,26 +254,77 @@ ggplot(data=agg.data, aes(y=mood, x=treatment))+
 ## Intro vs interaction phase
 
 ```{r loading data, include = FALSE}
+
+agg.data<-read.csv("data/dog_jealousy_aggregated_data.csv")%>%
+  select(subject,age)
+
 ydata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_questionnaires_updated_mistakes_new.xlsx", sheet = 'Kata_phases_explanations', na = c('NA'))%>%
   select(Dog_name, Breed, "Age (years)", Sex, Condition, attitude_Introduction_phase,attitude_interaction_phase)%>% 
-  rename(age="Age (years)", intro=attitude_Introduction_phase, interact=attitude_interaction_phase)%>%
+  rename(age="Age (years)", Introduction=attitude_Introduction_phase, Interaction=attitude_interaction_phase)%>%
   mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
-  gather(phase, attitude,intro, interact)%>%
+  gather(phase, attitude,Introduction, Interaction)%>%
   mutate(attitude=as.factor(attitude))%>%
-  mutate(attitude=fct_recode(attitude, "Insecure-Offensive"="Insecure-offensive"))
+  mutate(attitude=fct_recode(attitude, "Insecure-Offensive"="Insecure-offensive"))%>%
+  mutate(attitude=fct_recode(attitude, "IO"="Insecure-Offensive"))%>%
+  mutate(human=fct_recode(human, "Caregiver"="C", "Stranger"="S"))%>%
+    rename(subject="Dog_name")%>%
+  select(-age)%>%
+  mutate(subject=fct_recode(subject, "Baerbel"="Bärbel", "Eisbaer"="Eisbär", "Fiby"="Fiby2", "Finja"="Finja2", "Jo-jo3"="Jo-Jo3", "Maedi"="Mädi", "Mia"="Mia7", "Muesli"="Müsli",  "Nana"="Nana3", "Ronja"="Ronja4", "Yuki"="Yuki4"))%>%
+  full_join(agg.data)%>%
+  mutate(z.age = scale(age))
 
 #Bring the categories in the correct order
 ydata$attitude=factor(ydata$attitude,
-levels=levels(ydata$attitude)[c(1, 4, 2, 3, 5)])
+levels=levels(ydata$attitude)[c(4, 1, 2, 3, 5)])
 levels(ydata$attitude)
+
+ydata$phase<-relevel(as.factor(ydata$phase), ref = "Introduction")
 
 ```
 
+
+
+``` {r mixed modeling, error=TRUE}
+view(dfSummary(ydata))
+```
+### Ordinal regression
+
+
+fit model
 ```{r}
-ggplot(data=ydata, aes(x=attitude))+
+attitude.model.int.01<-clmm(attitude~phase*treatment*human+z.age+Sex+ (1|subject), data=ydata)
+summary(attitude.model.int.01)
+drop1(attitude.model.int.01, test="Chisq")
+```
+
+
+```{r}
+
+attitude.model.int.02<-clmm(attitude~phase+treatment+human+phase:treatment+phase:human+treatment:human+z.age+Sex+ (1|subject), data=ydata)
+summary(attitude.model.int.02)
+drop1(attitude.model.int.02, test="Chisq")
+```
+```{r}
+
+attitude.model.int.03<-clmm(attitude~phase+treatment+human+phase:human+Sex+z.age+ (1+phase|subject), data=ydata)
+summary(attitude.model.int.03)
+
+drop1(attitude.model.int.03, test="Chisq")
+```
+
+
+```{r fig.width=8, fig.height=4}
+attitude.plot<- ggplot(data=ydata, aes(x=attitude))+
   geom_histogram(stat="count")+
-  facet_wrap(~phase)+
-  theme_few()
+  facet_grid(human~phase)+
+  theme_bw()+
+  ylab("Number of dogs")+xlab("Attitude")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+ggsave(attitude.plot, filename = "graphs/attitude_plot_intro_interaction.png", width=9, height=5, scale=0.7)
+```
+
+```{r}
 
 ```
 

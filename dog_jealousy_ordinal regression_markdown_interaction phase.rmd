@@ -1,0 +1,139 @@
+---
+title: "Dog Jealousy- analysis Script"
+author: "CV"
+date: "October 27, 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list=ls())
+library(lme4)
+library(ggthemes)
+library(psych)
+library(cowplot)
+library(car)
+library(ggsignif)
+library(ordinal)
+library(tidyverse)
+library(summarytools)
+library(readxl)
+source("./functions/diagnostic_fcns.r")
+source("./functions/glmm_stability.r")
+source("./functions/boot_glmm.r")
+source("./functions/drop1_para.r")
+
+```
+
+
+## Intro vs interaction phase
+
+```{r loading data, include = FALSE}
+
+agg.data<-read.csv("data/dog_jealousy_aggregated_data.csv")%>%
+  select(subject,age)
+
+ydata<-read_xlsx("./data/201002_beh_jealousy_Kata_coding_output_all_data_Dusty_questionnaires_updated_mistakes_new.xlsx", sheet = 'Kata_phases_explanations', na = c('NA'))%>%
+  select(Dog_name, Breed, "Age (years)", Sex, Condition, attitude_Introduction_phase,attitude_interaction_phase)%>% 
+  rename(age="Age (years)", Introduction=attitude_Introduction_phase, Interaction=attitude_interaction_phase)%>%
+  mutate(human=str_sub(Condition, 1,1), treatment=str_sub(Condition, 2))%>%
+  gather(phase, attitude,Introduction, Interaction)%>%
+  mutate(attitude=as.factor(attitude))%>%
+  mutate(attitude=fct_recode(attitude, "Insecure-Offensive"="Insecure-offensive"))%>%
+  mutate(attitude=fct_recode(attitude, "IO"="Insecure-Offensive"))%>%
+  mutate(human=fct_recode(human, "Caregiver"="C", "Stranger"="S"))%>%
+    rename(subject="Dog_name")%>%
+  select(-age)%>%
+  mutate(subject=fct_recode(subject, "Baerbel"="Bärbel", "Eisbaer"="Eisbär", "Fiby"="Fiby2", "Finja"="Finja2", "Jo-jo3"="Jo-Jo3", "Maedi"="Mädi", "Mia"="Mia7", "Muesli"="Müsli",  "Nana"="Nana3", "Ronja"="Ronja4", "Yuki"="Yuki4"))%>%
+  full_join(agg.data)%>%
+  mutate(z.age = scale(age))
+
+#Bring the categories in the correct order
+ydata$attitude=factor(ydata$attitude,
+levels=levels(ydata$attitude)[c(4, 1, 2, 3, 5)])
+levels(ydata$attitude)
+
+ydata$phase<-relevel(as.factor(ydata$phase), ref = "Introduction")
+
+```
+
+
+
+``` {r mixed modeling, error=TRUE}
+view(dfSummary(ydata))
+```
+### Ordinal regression
+
+
+fit model
+```{r}
+attitude.model.int.01<-clmm(attitude~phase*treatment*human+z.age+Sex+ (1|subject), data=ydata)
+summary(attitude.model.int.01)
+drop1(attitude.model.int.01, test="Chisq")
+```
+
+
+```{r}
+
+attitude.model.int.02<-clmm(attitude~phase+treatment+human+phase:treatment+phase:human+treatment:human+z.age+Sex+ (1|subject), data=ydata)
+summary(attitude.model.int.02)
+drop1(attitude.model.int.02, test="Chisq")
+```
+```{r}
+
+attitude.model.int.03<-clmm(attitude~phase+treatment+human+phase:human+Sex+z.age+ (1+phase|subject), data=ydata)
+
+summary(attitude.model.int.03)
+
+drop1(attitude.model.int.03, test="Chisq")
+```
+
+
+```{r fig.width=8, fig.height=4}
+attitude.plot<- ggplot(data=ydata, aes(x=attitude))+
+  geom_histogram(stat="count")+
+  facet_grid(human~phase)+
+  theme_bw()+
+  ylab("Number of dogs")+xlab("Attitude")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+attitude.plot
+
+ggsave(attitude.plot, filename = "graphs/attitude_plot_intro_interaction.png", width=9, height=5, scale=0.7)
+```
+
+```{r}
+age.plot.data<-ydata%>%
+  group_by(attitude, age)%>%
+  add_count(as.numeric(attitude))
+
+age.plot<-ggplot(data=age.plot.data, aes(x=age, as.numeric(attitude)))+
+  geom_point(size=age.plot.data$n, alpha=.3)+
+  theme_few()+
+  scale_y_continuous(breaks=c(1,2,3,4,5), labels=c("Neutral", "Friendly", "Insecure", "Insecure-Offensive", "Offensive"), limits=c(1, 5))+
+  ylab("")+ xlab("Age (in months)")
+
+ggsave(age.plot, filename = "graphs/attitude_plot_age.png", width=7, height=5, scale = 0.8)
+
+```
+
+### assumptions: proportional odds
+```{r}
+num.resp=as.numeric(ydata$attitude)
+all.coef=matrix(NA, ncol=length(coef(attitude.model.int.03)),
+nrow=length(unique(num.resp))-1)
+rownames(all.coef)=sort(unique(num.resp))[-1]
+colnames(all.coef)=names(coef(attitude.model.int.03))
+for(i in sort(unique(num.resp))[-1]){
+rv=as.numeric(num.resp>=i)
+m=glm(rv~phase+treatment+human+Sex+z.age, data=ydata)
+all.coef[i-1, ]=coef(m)[-1]
+}
+
+round(all.coef, 3)
+```
+
