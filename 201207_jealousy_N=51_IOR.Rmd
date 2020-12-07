@@ -1,0 +1,104 @@
+---
+title: "jealous_IOR"
+author: "Sabrina Karl"
+date: "4 12 2020"
+output: html_document
+---
+
+---
+title: "dog_jealousy_reli"
+author: "Christoph Voelter"
+date: "16/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(psych)
+library(tidyverse)
+library(irr)
+```
+
+Sniffing data
+```{r}
+setwd("C:/Users/karls/Documents/Laptop_backup_120319/DATADRIVE0/PhD/Studien/jealousy_behavioural/interreliability_coding/N=51")
+
+sniffing.data <- read.table(file="sniffing_IOR_new.csv", header=T, sep=";")
+
+cor.test(sniffing.data$Kristina, sniffing.data$Kata, method = "spearman", use ="complete.obs")
+
+
+```
+--> 0.89
+
+Blocking data
+```{r}
+blocking.data <- read.table(file="blocking_IOR_new.csv", header=T, sep=";")
+
+#Agreement:
+blocking.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(blocking.data$Kristina,blocking.data$Kata))
+
+icc(blocking.data, model="twoway", type="agreement")
+```
+--> 0.86
+
+
+Dominant behaviors
+```{r}
+dom.data <- read.table(file="dominant_IOR.csv", header=T, sep=";")
+
+dom.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(dom.data$Kristina,dom.data$Kata))
+```
+
+--> Kappa = 0.27
+
+Fake dog approach
+```{r}
+approach.data <- read.table(file="fake_dog_approach_IOR.csv", header=T, sep=";")
+
+approach.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+cohen.kappa(cbind(approach.data$Kristina,approach.data$Kata))
+#icc(ia.data, model="twoway", type="agreement")
+```
+fake dog IA
+```{r}
+ia.data <- read.table(file="fake_dog_IA_IOR_new.csv", header=T, sep=";")
+
+ia.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(ia.data$Kristina,ia.data$Kata))
+
+icc(ia.data, model="twoway", type="agreement")
+```
+--> 0.52
+
+Non offensive
+```{r}
+no.data <- read.table(file="non_offensive_IOR.csv", header=T, sep=";")
+
+no.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(no.data$Kristina,no.data$Kata))
+
+icc(no.data, model="twoway", type="agreement")
+
+```
+
+Behavioral categories
+```{r}
+bc.data <- read.table(file="attitude_category_IOR_new.csv", header=T, sep=";")
+
+cohen.kappa(cbind(bc.data$Kristina,bc.data$Kata))
+
+#icc(no.data, model="twoway", type="agreement")
+```
