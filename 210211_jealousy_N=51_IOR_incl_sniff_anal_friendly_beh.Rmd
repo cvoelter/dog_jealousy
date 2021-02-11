@@ -1,0 +1,159 @@
+---
+title: "jealous_IOR"
+author: "Sabrina Karl"
+date: "4 12 2020"
+output: html_document
+---
+
+---
+title: "dog_jealousy_reli"
+author: "Christoph Voelter"
+date: "16/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(psych)
+library(tidyverse)
+library(irr)
+```
+
+Sniffing data
+```{r}
+setwd("C:/Users/karls/Documents/Laptop_backup_120319/DATADRIVE0/PhD/Studien/jealousy_behavioural/interreliability_coding/IOR_files_N=51")
+
+sniffing.data <- read.table(file="sniffing_IOR_new.csv", header=T, sep=";")
+
+cor.test(sniffing.data$Kristina, sniffing.data$Kata, method = "spearman", use ="complete.obs")
+
+
+```
+--> 0.89
+
+Sniffing_anal_region
+```{r}
+sniffing_anal.data <- read.table(file="Sniffing_anal_region.csv", header=T, sep=";")
+
+cor.test(sniffing_anal.data$Kristina, sniffing_anal.data$Kata, method = "spearman", use ="complete.obs")
+
+
+```
+--> 0.83
+
+Blocking data
+```{r}
+blocking.data <- read.table(file="blocking_IOR_new.csv", header=T, sep=";")
+
+#Agreement:
+blocking.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(blocking.data$Kristina,blocking.data$Kata))
+
+icc(blocking.data, model="twoway", type="agreement")
+```
+--> 0.86
+
+
+Dominant behaviors
+```{r}
+dom.data <- read.table(file="dominant_IOR.csv", header=T, sep=";")
+
+dom.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(dom.data$Kristina,dom.data$Kata))
+```
+
+--> Kappa = 0.27
+
+Friendly behaviors towards all humans
+```{r}
+Frihum.data <- read.table(file="friendly_towards_human_all.csv", header=T, sep=";")
+
+Frihum.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(Frihum.data$Kristina,Frihum.data$Kata))
+```
+--> 0.80
+
+Friendly behaviors towards stranger
+```{r}
+Fristr.data <- read.table(file="friendly_towards_stranger.csv", header=T, sep=";")
+
+Fristr.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(Fristr.data$Kristina,Fristr.data$Kata))
+```
+--> 0.94
+
+Friendly behaviors towards caregiver
+```{r}
+Fricar.data <- read.table(file="friendly_towards_caregiver.csv", header=T, sep=";")
+
+Fricar.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(Fricar.data$Kristina,Fricar.data$Kata))
+```
+--> 0.82
+
+
+Fake dog approach
+```{r}
+approach.data <- read.table(file="fake_dog_approach_IOR.csv", header=T, sep=";")
+
+approach.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+cohen.kappa(cbind(approach.data$Kristina,approach.data$Kata))
+icc(ia.data, model="twoway", type="agreement")
+```
+lower estimate   upper
+unweighted kappa -1.6e-08        0 1.6e-08
+weighted kappa    0.0e+00        0 0.0e+00
+--> ???
+ICC 0.5?
+
+fake dog IA
+```{r}
+ia.data <- read.table(file="fake_dog_IA_IOR_new.csv", header=T, sep=";")
+
+ia.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(ia.data$Kristina,ia.data$Kata))
+
+icc(ia.data, model="twoway", type="agreement")
+```
+--> 0.52
+
+Non offensive
+```{r}
+no.data <- read.table(file="non_offensive_IOR.csv", header=T, sep=";")
+
+no.data%>%summarise(mean(ifelse(Kristina == Kata,1,0)))
+
+
+cohen.kappa(cbind(no.data$Kristina,no.data$Kata))
+
+icc(no.data, model="twoway", type="agreement")
+
+```
+--> 0.38
+
+
+Behavioral categories
+```{r}
+bc.data <- read.table(file="attitude_category_IOR_new.csv", header=T, sep=";")
+levels(bc.data$Kristina)
+levels(bc.data$Kata)
+
+cohen.kappa(cbind(bc.data$Kristina,bc.data$Kata))
+
+#icc(no.data, model="twoway", type="agreement")
+```
+--> weighted kappa 0.79
